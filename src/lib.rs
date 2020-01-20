@@ -366,6 +366,22 @@ impl_for_composite_types!(Unaligned);
 /// ```
 pub struct Ref<B, T: Sized>(NonNull<T>, PhantomData<B>);
 
+// Ref<B, T> and Slice<B, T> are Copy if B is Copy
+impl<B: Copy, T> Copy for Ref<B, T> {}
+impl<B: Copy, T> Copy for Slice<B, T> {}
+
+// Ref<B, T> and Slice<B, [T]> are Clone if B is Clone
+impl<B: Clone, T> Clone for Ref<B, T> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone(), self.1.clone())
+    }
+}
+impl<B: Clone, T> Clone for Slice<B, T> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone(), self.1.clone(), self.2.clone())
+    }
+}
+
 impl<B, T> Ref<B, T>
 where
     B: ByteSlice,
@@ -1446,5 +1462,20 @@ mod tests {
         let buf = AlignedBuffer::<u64, [u8; 8]>::default();
         let lv = Slice::<_, u64>::new(&buf.buf[..]).unwrap();
         assert_eq!(format!("{:?}", lv), "Slice([0])");
+    }
+
+    #[test]
+    fn test_layoutverified_can_be_copy() {
+        let buf = AlignedBuffer::<u32, [u8; 4]>::default();
+
+        // <B, T> case
+        let a = Ref::<_, u32>::new(&buf.buf[..]).unwrap();
+        let b = a;
+        assert_eq!(a.into_ref(), b.into_ref()); // would fail if a were moved
+
+        // <B, [T]> case
+        let a = Slice::<_, u32>::new(&buf.buf[..]).unwrap();
+        let b = a;
+        assert_eq!(a.into_slice(), b.into_slice()); // would fail if a were moved
     }
 }
