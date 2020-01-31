@@ -349,7 +349,7 @@ impl_for_composite_types!(Unaligned);
 ///
 /// impl<B: ByteSlice> UdpPacket<B> {
 ///     pub fn parse(bytes: B) -> Option<UdpPacket<B>> {
-///         let (header, body) = Ref::new_unaligned_from_prefix(bytes)?;
+///         let (header, body) = Ref::new_from_prefix(bytes)?;
 ///         Some(UdpPacket { header, body })
 ///     }
 ///
@@ -546,174 +546,6 @@ where
     #[inline]
     pub fn new_zeroed(bytes: B) -> Option<Self> {
         Self::new(bytes).map(|mut v| {
-            zero(v.bytes_mut());
-            v
-        })
-    }
-}
-
-impl<B, T> Ref<B, T>
-where
-    B: ByteSlice,
-    T: Unaligned,
-{
-    /// Construct a new `Ref` for a type with no alignment
-    /// requirement.
-    ///
-    /// `new_unaligned` verifies that `bytes.len() == size_of::<T>()` and
-    /// constructs a new `Ref`. If the check fails, it returns `None`.
-    #[inline]
-    pub fn new_unaligned(bytes: B) -> Option<Ref<B, T>> {
-        if bytes.len() != mem::size_of::<T>() {
-            return None;
-        }
-        Some(Ref(NonNull::new(bytes.as_ptr() as _).unwrap(), PhantomData))
-    }
-
-    /// Construct a new `Ref` from the prefix of a byte slice for a
-    /// type with no alignment requirement.
-    ///
-    /// `new_unaligned_from_prefix` verifies that `bytes.len() >=
-    /// size_of::<T>()`. It consumes the first `size_of::<T>()` bytes from
-    /// `bytes` to construct a `Ref`, and returns the remaining bytes
-    /// to the caller. If the length check fails, it returns `None`.
-    #[inline]
-    pub fn new_unaligned_from_prefix(bytes: B) -> Option<(Ref<B, T>, B)> {
-        if bytes.len() < mem::size_of::<T>() {
-            return None;
-        }
-        let (bytes, suffix) = bytes.split_at(mem::size_of::<T>());
-        Some((Ref(NonNull::new(bytes.as_ptr() as _).unwrap(), PhantomData), suffix))
-    }
-
-    /// Construct a new `Ref` from the suffix of a byte slice for a
-    /// type with no alignment requirement.
-    ///
-    /// `new_unaligned_from_suffix` verifies that `bytes.len() >=
-    /// size_of::<T>()`. It consumes the last `size_of::<T>()` bytes from
-    /// `bytes` to construct a `Ref`, and returns the preceding bytes
-    /// to the caller. If the length check fails, it returns `None`.
-    #[inline]
-    pub fn new_unaligned_from_suffix(bytes: B) -> Option<(B, Ref<B, T>)> {
-        let bytes_len = bytes.len();
-        if bytes_len < mem::size_of::<T>() {
-            return None;
-        }
-        let (prefix, bytes) = bytes.split_at(bytes_len - mem::size_of::<T>());
-        Some((prefix, Ref(NonNull::new(bytes.as_ptr() as _).unwrap(), PhantomData)))
-    }
-}
-
-impl<B, T> Slice<B, T>
-where
-    B: ByteSlice,
-    T: Unaligned,
-{
-    /// Construct a new `Slice` of a slice type with no alignment
-    /// requirement.
-    ///
-    /// `new_unaligned` verifies that `bytes.len()` is a multiple of
-    /// `size_of::<T>()` and constructs a new `Slice`. If the check
-    /// fails, it returns `None`.
-    ///
-    /// # Panics
-    ///
-    /// `new_unaligned` panics if `T` is a zero-sized type.
-    #[inline]
-    pub fn new_unaligned(bytes: B) -> Option<Self> {
-        assert_ne!(mem::size_of::<T>(), 0);
-        if bytes.len() % mem::size_of::<T>() != 0 {
-            return None;
-        }
-        let elems = bytes.len() / mem::size_of::<T>();
-        Some(Slice(NonNull::new(bytes.as_ptr() as _).unwrap(), elems, PhantomData))
-    }
-}
-
-impl<B, T> Ref<B, T>
-where
-    B: ByteSliceMut,
-    T: Unaligned,
-{
-    /// Construct a new `Ref` for a type with no alignment
-    /// requirement, zeroing the bytes.
-    ///
-    /// `new_unaligned_zeroed` verifies that `bytes.len() == size_of::<T>()` and
-    /// constructs a new `Ref`. If the check fails, it returns
-    /// `None`.
-    ///
-    /// If the check succeeds, then `bytes` will be initialized to zero. This
-    /// can be useful when re-using buffers to ensure that sensitive data
-    /// previously stored in the buffer is not leaked.
-    #[inline]
-    pub fn new_unaligned_zeroed(bytes: B) -> Option<Self> {
-        Self::new_unaligned(bytes).map(|mut v| {
-            zero(v.bytes_mut());
-            v
-        })
-    }
-
-    /// Construct a new `Ref` from the prefix of a byte slice for a
-    /// type with no alignment requirement, zeroing the prefix.
-    ///
-    /// `new_unaligned_from_prefix_zeroed` verifies that `bytes.len() >=
-    /// size_of::<T>()`. It consumes the first `size_of::<T>()` bytes from
-    /// `bytes` to construct a `Ref`, and returns the remaining bytes
-    /// to the caller. If the length check fails, it returns `None`.
-    ///
-    /// If the check succeeds, then the prefix which is consumed will be
-    /// initialized to zero. This can be useful when re-using buffers to ensure
-    /// that sensitive data previously stored in the buffer is not leaked.
-    #[inline]
-    pub fn new_unaligned_from_prefix_zeroed(bytes: B) -> Option<(Self, B)> {
-        Self::new_unaligned_from_prefix(bytes).map(|(mut v,rest)| {
-            zero(v.bytes_mut());
-            (v, rest)
-        })
-    }
-
-    /// Construct a new `Ref` from the suffix of a byte slice for a
-    /// type with no alignment requirement, zeroing the suffix.
-    ///
-    /// `new_unaligned_from_suffix_zeroed` verifies that `bytes.len() >=
-    /// size_of::<T>()`. It consumes the last `size_of::<T>()` bytes from
-    /// `bytes` to construct a `Ref`, and returns the preceding bytes
-    /// to the caller. If the length check fails, it returns `None`.
-    ///
-    /// If the check succeeds, then the suffix which is consumed will be
-    /// initialized to zero. This can be useful when re-using buffers to ensure
-    /// that sensitive data previously stored in the buffer is not leaked.
-    #[inline]
-    pub fn new_unaligned_from_suffix_zeroed(bytes: B) -> Option<(B, Self)> {
-        Self::new_unaligned_from_suffix(bytes).map(|(rest,mut v)| {
-            zero(v.bytes_mut());
-            (rest, v)
-        })
-    }
-}
-
-impl<B, T> Slice<B, T>
-where
-    B: ByteSliceMut,
-    T: Unaligned,
-{
-    /// Construct a new `Slice` for a slice type with no alignment
-    /// requirement, zeroing the bytes.
-    ///
-    /// `new_slice_unaligned_zeroed` verifies that `bytes.len()` is a multiple
-    /// of `size_of::<T>()` and constructs a new `Slice`. If the check
-    /// fails, it returns `None`.
-    ///
-    /// If the check succeeds, then `bytes` will be initialized to zero. This
-    /// can be useful when re-using buffers to ensure that sensitive data
-    /// previously stored in the buffer is not leaked.
-    ///
-    /// # Panics
-    ///
-    /// `new_slice` panics if `T` is a zero-sized type.
-    #[inline]
-    pub fn new_unaligned_zeroed(bytes: B) -> Option<Self> {
-        Self::new_unaligned(bytes).map(|mut v| {
             zero(v.bytes_mut());
             v
         })
@@ -1342,33 +1174,35 @@ mod tests {
     #[test]
     fn test_new_unaligned_sized() {
         // Test that an unaligned, properly-sized buffer works for
-        // new_unaligned, new_unaligned_from_prefix, and
-        // new_unaligned_from_suffix, and that new_unaligned_from_prefix
-        // new_unaligned_from_suffix return empty slices. Test that an unaligned
+        // new, new_from_prefix, and new_from_suffix. Test that an unaligned
         // buffer whose length is a multiple of the element size works for
         // new_slice. Test that xxx_zeroed behaves the same, and zeroes the
         // memory.
 
         let mut buf = [0u8; 8];
         test_new_helper_unaligned(
-            Ref::<_, [u8; 8]>::new_unaligned(&mut buf[..]).unwrap(),
+            Ref::<_, [u8; 8]>::new(&mut buf[..]).unwrap(),
         );
         buf = [0xFFu8; 8];
         test_new_helper_unaligned(
-            Ref::<_, [u8; 8]>::new_unaligned_zeroed(&mut buf[..]).unwrap(),
+            Ref::<_, [u8; 8]>::new_zeroed(&mut buf[..]).unwrap(),
+        );
+        buf = [0xFFu8; 8];
+        test_new_helper_unaligned(
+            Ref::<_, [u8; 8]>::new_zeroed(&mut buf[..]).unwrap(),
         );
         {
             // in a block so that lv and suffix don't live too long
             buf = [0u8; 8];
             let (lv, suffix) =
-                Ref::<_, [u8; 8]>::new_unaligned_from_prefix(&mut buf[..]).unwrap();
+                Ref::<_, [u8; 8]>::new_from_prefix(&mut buf[..]).unwrap();
             assert!(suffix.is_empty());
             test_new_helper_unaligned(lv);
         }
         {
             buf = [0xFFu8; 8];
             let (lv, suffix) =
-                Ref::<_, [u8; 8]>::new_unaligned_from_prefix_zeroed(&mut buf[..])
+                Ref::<_, [u8; 8]>::new_from_prefix_zeroed(&mut buf[..])
                     .unwrap();
             assert!(suffix.is_empty());
             test_new_helper_unaligned(lv);
@@ -1376,14 +1210,14 @@ mod tests {
         {
             buf = [0u8; 8];
             let (prefix, lv) =
-                Ref::<_, [u8; 8]>::new_unaligned_from_suffix(&mut buf[..]).unwrap();
+                Ref::<_, [u8; 8]>::new_from_suffix(&mut buf[..]).unwrap();
             assert!(prefix.is_empty());
             test_new_helper_unaligned(lv);
         }
         {
             buf = [0xFFu8; 8];
             let (prefix, lv) =
-                Ref::<_, [u8; 8]>::new_unaligned_from_suffix_zeroed(&mut buf[..])
+                Ref::<_, [u8; 8]>::new_from_suffix_zeroed(&mut buf[..])
                     .unwrap();
             assert!(prefix.is_empty());
             test_new_helper_unaligned(lv);
@@ -1446,7 +1280,7 @@ mod tests {
     #[test]
     fn test_new_unaligned_oversized() {
         // Test than an unaligned, overly-sized buffer works for
-        // new_unaligned_from_prefix and new_unaligned_from_suffix, and that
+        // new_from_prefix and new_from_suffix, and that
         // they return the remainder and prefix of the slice respectively. Test
         // that xxx_zeroed behaves the same, and zeroes the memory.
 
@@ -1454,14 +1288,14 @@ mod tests {
         {
             // in a block so that lv and suffix don't live too long
             let (lv, suffix) =
-                Ref::<_, [u8; 8]>::new_unaligned_from_prefix(&mut buf[..]).unwrap();
+                Ref::<_, [u8; 8]>::new_from_prefix(&mut buf[..]).unwrap();
             assert_eq!(suffix.len(), 8);
             test_new_helper_unaligned(lv);
         }
         {
             buf = [0xFFu8; 16];
             let (lv, suffix) =
-                Ref::<_, [u8; 8]>::new_unaligned_from_prefix_zeroed(&mut buf[..])
+                Ref::<_, [u8; 8]>::new_from_prefix_zeroed(&mut buf[..])
                     .unwrap();
             // assert that the suffix wasn't zeroed
             assert_eq!(suffix, &[0xFF; 8]);
@@ -1470,14 +1304,14 @@ mod tests {
         {
             buf = [0u8; 16];
             let (prefix, lv) =
-                Ref::<_, [u8; 8]>::new_unaligned_from_suffix(&mut buf[..]).unwrap();
+                Ref::<_, [u8; 8]>::new_from_suffix(&mut buf[..]).unwrap();
             assert_eq!(prefix.len(), 8);
             test_new_helper_unaligned(lv);
         }
         {
             buf = [0xFFu8; 16];
             let (prefix, lv) =
-                Ref::<_, [u8; 8]>::new_unaligned_from_suffix_zeroed(&mut buf[..])
+                Ref::<_, [u8; 8]>::new_from_suffix_zeroed(&mut buf[..])
                     .unwrap();
             // assert that the prefix wasn't zeroed
             assert_eq!(prefix, &[0xFF; 8]);
@@ -1495,8 +1329,8 @@ mod tests {
         // buf.buf should be aligned to 8, so only the length check should fail
         assert!(Ref::<_, u64>::new(&buf.buf[..]).is_none());
         assert!(Ref::<_, u64>::new_zeroed(&mut buf.buf[..]).is_none());
-        assert!(Ref::<_, [u8; 8]>::new_unaligned(&buf.buf[..]).is_none());
-        assert!(Ref::<_, [u8; 8]>::new_unaligned_zeroed(&mut buf.buf[..]).is_none());
+        assert!(Ref::<_, [u8; 8]>::new(&buf.buf[..]).is_none());
+        assert!(Ref::<_, [u8; 8]>::new_zeroed(&mut buf.buf[..]).is_none());
 
         // fail because the buffer is too small
 
@@ -1505,17 +1339,17 @@ mod tests {
         // buf.buf should be aligned to 8, so only the length check should fail
         assert!(Ref::<_, u64>::new(&buf.buf[..]).is_none());
         assert!(Ref::<_, u64>::new_zeroed(&mut buf.buf[..]).is_none());
-        assert!(Ref::<_, [u8; 8]>::new_unaligned(&buf.buf[..]).is_none());
-        assert!(Ref::<_, [u8; 8]>::new_unaligned_zeroed(&mut buf.buf[..]).is_none());
+        assert!(Ref::<_, [u8; 8]>::new(&buf.buf[..]).is_none());
+        assert!(Ref::<_, [u8; 8]>::new_zeroed(&mut buf.buf[..]).is_none());
         assert!(Ref::<_, u64>::new_from_prefix(&buf.buf[..]).is_none());
         assert!(Ref::<_, u64>::new_from_prefix_zeroed(&mut buf.buf[..]).is_none());
         assert!(Ref::<_, u64>::new_from_suffix(&buf.buf[..]).is_none());
         assert!(Ref::<_, u64>::new_from_suffix_zeroed(&mut buf.buf[..]).is_none());
-        assert!(Ref::<_, [u8; 8]>::new_unaligned_from_prefix(&buf.buf[..]).is_none());
-        assert!(Ref::<_, [u8; 8]>::new_unaligned_from_prefix_zeroed(&mut buf.buf[..])
+        assert!(Ref::<_, [u8; 8]>::new_from_prefix(&buf.buf[..]).is_none());
+        assert!(Ref::<_, [u8; 8]>::new_from_prefix_zeroed(&mut buf.buf[..])
             .is_none());
-        assert!(Ref::<_, [u8; 8]>::new_unaligned_from_suffix(&buf.buf[..]).is_none());
-        assert!(Ref::<_, [u8; 8]>::new_unaligned_from_suffix_zeroed(&mut buf.buf[..])
+        assert!(Ref::<_, [u8; 8]>::new_from_suffix(&buf.buf[..]).is_none());
+        assert!(Ref::<_, [u8; 8]>::new_from_suffix_zeroed(&mut buf.buf[..])
             .is_none());
 
         // fail because the length is not a multiple of the element size
@@ -1524,9 +1358,9 @@ mod tests {
         // buf.buf has length 12, but element size is 8
         assert!(Slice::<_, u64>::new(&buf.buf[..]).is_none());
         assert!(Slice::<_, u64>::new_zeroed(&mut buf.buf[..]).is_none());
-        assert!(Slice::<_, [u8; 8]>::new_unaligned(&buf.buf[..]).is_none());
+        assert!(Slice::<_, [u8; 8]>::new(&buf.buf[..]).is_none());
         assert!(
-            Slice::<_, [u8; 8]>::new_unaligned_zeroed(&mut buf.buf[..]).is_none()
+            Slice::<_, [u8; 8]>::new_zeroed(&mut buf.buf[..]).is_none()
         );
 
         // fail because the alignment is insufficient
@@ -1545,6 +1379,18 @@ mod tests {
         // use the suffix of the slice
         assert!(Ref::<_, u64>::new_from_suffix(&buf.buf[..]).is_none());
         assert!(Ref::<_, u64>::new_from_suffix_zeroed(&mut buf.buf[..]).is_none());
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_new_slice_zst_panics() {
+        Slice::<_, ()>::new(&[0u8][..]);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_new_slice_zeroed_zst_panics() {
+        Slice::<_, ()>::new_zeroed(&mut [0u8][..]);
     }
 
     #[test]
